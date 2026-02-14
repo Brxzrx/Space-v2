@@ -921,6 +921,274 @@ document.body.appendChild(menu)
 Game.pause()
 }
 
+/* ===============================
+   FIX HEALTH DISPLAY PROPERLY
+=============================== */
+
+Game.draw=function(){
+
+ctx.clearRect(0,0,Game.width,Game.height)
+
+Game.entities.forEach(e=>e.draw())
+
+// إطار خلفي
+ctx.fillStyle="#222"
+ctx.fillRect(20,20,220,18)
+
+// شريط الصحة
+ctx.fillStyle="#00ff00"
+ctx.fillRect(20,20,220*(Game.playerHp/Game.playerMaxHp),18)
+
+ctx.strokeStyle="#ffffff"
+ctx.strokeRect(20,20,220,18)
+
+ctx.fillStyle="#ffffff"
+ctx.font="14px Arial"
+ctx.fillText("HP: "+Game.playerHp+"/"+Game.playerMaxHp,25,33)
+ctx.fillText("Lives: "+Game.lives,25,60)
+ctx.fillText("Round: "+Game.round,25,80)
+ctx.fillText("Coins: "+Game.coins,25,100)
+}
+
+
+/* ===============================
+   SLOW DOWN ENEMIES PROPERLY
+=============================== */
+
+Enemy.prototype.update=function(dt){
+
+// سرعة أبطأ ومتدرجة
+this.y += (60 + Game.round*8) * dt
+
+// منع الظهور من أقصى اليسار
+if(this.x < 40) this.x = 40
+if(this.x > canvas.width-40) this.x = canvas.width-40
+
+// لو وصل آخر الشاشة يسبب ضرر
+if(this.y > canvas.height - 20){
+this.remove = true
+Game.damagePlayer(20)
+}
+
+}
+
+
+/* ===============================
+   FIX PLAYER START POSITION ALWAYS
+=============================== */
+
+Game.player.x = canvas.width/2
+Game.player.y = canvas.height-80
+
+
+/* ===============================
+   POWERUP DROP SYSTEM
+=============================== */
+
+class PowerUp extends Entity{
+constructor(x,y,type){
+super(x,y)
+this.type=type
+this.radius=10
+this.speed=80
+}
+
+update(dt){
+this.y += this.speed*dt
+if(this.y > canvas.height) this.remove=true
+
+// اصطدام مع اللاعب
+let dx=this.x-Game.player.x
+let dy=this.y-Game.player.y
+let dist=Math.sqrt(dx*dx+dy*dy)
+
+if(dist < this.radius + Game.player.radius){
+this.apply()
+this.remove=true
+}
+}
+
+apply(){
+if(this.type==="heal"){
+Game.playerHp += 20
+if(Game.playerHp > Game.playerMaxHp)
+Game.playerHp = Game.playerMaxHp
+}
+if(this.type==="coins"){
+Game.coins += 25
+}
+}
+
+draw(){
+ctx.fillStyle=this.type==="heal"?"#00ff00":"#ffff00"
+ctx.beginPath()
+ctx.arc(this.x,this.y,this.radius,0,Math.PI*2)
+ctx.fill()
+}
+}
+
+
+// تعديل الاصطدام لإضافة الدروب
+const oldCollisionFix = Game.handleCollisions
+
+Game.handleCollisions=function(){
+
+oldCollisionFix.call(this)
+
+this.entities.forEach(e=>{
+if(e instanceof Enemy && e.remove){
+
+// نسبة نزول ميزة 40%
+if(Math.random() < 0.4){
+let type = Math.random()<0.5?"heal":"coins"
+Game.add(new PowerUp(e.x,e.y,type))
+}
+
+}
+})
+}
+
+/* ===============================
+   CLEAN MAIN MENU SYSTEM
+=============================== */
+
+Game.showMainMenu=function(){
+
+let old=document.getElementById("mainMenu")
+if(old) old.remove()
+
+let menu=document.createElement("div")
+menu.id="mainMenu"
+menu.style.position="absolute"
+menu.style.top="0"
+menu.style.left="0"
+menu.style.width="100%"
+menu.style.height="100%"
+menu.style.background="linear-gradient(180deg,#000,#111)"
+menu.style.display="flex"
+menu.style.flexDirection="column"
+menu.style.alignItems="center"
+menu.style.justifyContent="center"
+menu.style.zIndex="9999"
+
+let hasSave=localStorage.getItem("GD_v3_save")
+
+menu.innerHTML=`
+<h1 style="margin-bottom:30px;color:#00f2ff">Galaxy Dominion</h1>
+
+<button style="margin:10px;padding:12px 25px;font-size:16px"
+onclick="Game.start();Game.hideMainMenu()">
+${hasSave?"يكمل":"ابدأ"}
+</button>
+
+<button style="margin:10px;padding:12px 25px;font-size:16px"
+onclick="Game.showUpgradeMenu()">
+المتجر
+</button>
+
+<button style="margin:10px;padding:12px 25px;font-size:16px"
+onclick="Game.showSettings()">
+الإعدادات
+</button>
+
+<button style="margin:10px;padding:12px 25px;font-size:16px"
+onclick="window.open('https://wa.me/966537219007')">
+تواصل مع المطور
+</button>
+`
+
+document.body.appendChild(menu)
+Game.pause()
+}
+
+Game.hideMainMenu=function(){
+let menu=document.getElementById("mainMenu")
+if(menu) menu.remove()
+Game.start()
+}
+
+
+/* ===============================
+   SETTINGS PANEL
+=============================== */
+
+Game.showSettings=function(){
+
+let old=document.getElementById("settingsMenu")
+if(old) old.remove()
+
+let panel=document.createElement("div")
+panel.id="settingsMenu"
+panel.style.position="absolute"
+panel.style.top="0"
+panel.style.left="0"
+panel.style.width="100%"
+panel.style.height="100%"
+panel.style.background="#000"
+panel.style.display="flex"
+panel.style.flexDirection="column"
+panel.style.alignItems="center"
+panel.style.justifyContent="center"
+panel.style.zIndex="10000"
+
+panel.innerHTML=`
+<h2 style="color:#00f2ff;margin-bottom:20px">الإعدادات</h2>
+
+<button style="margin:8px;padding:10px 20px"
+onclick="Game.toggleMusic()">
+تشغيل الموسيقى
+</button>
+
+<button style="margin:8px;padding:10px 20px"
+onclick="Game.player.speed+=2">
+زيادة سرعة اللاعب
+</button>
+
+<button style="margin:8px;padding:10px 20px"
+onclick="Game.player.speed-=2">
+تقليل سرعة اللاعب
+</button>
+
+<button style="margin-top:20px;padding:10px 20px"
+onclick="Game.closeSettings()">
+رجوع
+</button>
+`
+
+document.body.appendChild(panel)
+Game.pause()
+}
+
+Game.closeSettings=function(){
+let panel=document.getElementById("settingsMenu")
+if(panel) panel.remove()
+Game.showMainMenu()
+}
+
+
+/* ===============================
+   MUSIC SYSTEM (YOUTUBE LINK)
+=============================== */
+
+Game.musicEnabled=false
+
+Game.toggleMusic=function(){
+
+if(!Game.musicEnabled){
+window.open("https://youtu.be/Igp4tIOGGMM?si=1B1BothkcZcI9lWn","_blank")
+Game.musicEnabled=true
+}
+}
+
+
+/* ===============================
+   AUTO SHOW MENU ON LOAD
+=============================== */
+
+setTimeout(()=>{
+Game.showMainMenu()
+},200)
+
 </script>
 </body>
 </html>
