@@ -3,254 +3,799 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Galaxy Overdrive</title>
+<title>Galaxy Dominion v3</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui}
-body{background:radial-gradient(circle at 50% 20%,#111 0%,#000 60%);overflow:hidden;color:#fff}
+body{background:#000;overflow:hidden;color:#fff}
 canvas{display:block}
 .panel{
 position:absolute;top:50%;left:50%;
 transform:translate(-50%,-50%);
-background:linear-gradient(180deg,#151515,#0b0b0b);
-border:2px solid #333;padding:25px;border-radius:14px;
-display:none;min-width:300px;text-align:center;
-box-shadow:0 0 40px #000;
+background:#111;border:2px solid #333;
+padding:25px;border-radius:14px;
+min-width:320px;text-align:center;
 }
-.panel h2{margin-bottom:10px}
 button{
-background:#1a1a1a;border:2px solid #444;color:#fff;
-padding:10px 18px;margin:6px;border-radius:10px;cursor:pointer;
+background:#1a1a1a;border:2px solid #444;
+color:#fff;padding:8px 14px;
+margin:6px;border-radius:8px;cursor:pointer
 }
-button:hover{background:#2a2a2a}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+button:hover{background:#333}
 .topUI{
 position:absolute;top:10px;left:0;right:0;
-display:flex;justify-content:space-between;padding:0 15px;font-size:14px
+display:flex;justify-content:space-between;
+padding:0 15px;font-size:14px
 }
-.shop{
-position:absolute;bottom:15px;left:50%;
-transform:translateX(-50%);display:flex;gap:10px
-}
-select,input{background:#111;color:#fff;border:1px solid #444;padding:4px}
 </style>
 </head>
 <body>
 
-<canvas id="c"></canvas>
+<canvas id="game"></canvas>
 
-<div id="startPanel" class="panel" style="display:block">
-<h2>Galaxy Overdrive</h2>
-<p id="introText">استعد للانطلاق</p>
-<div class="grid">
-<button onclick="startGame()">ابدأ</button>
-<button onclick="openSettings()">الإعدادات</button>
-<button onclick="window.open('https://wa.me/966537219007')">تواصل مع المطور</button>
-<button onclick="openShop()">المتجر</button>
-</div>
-</div>
-
-<div id="settingsPanel" class="panel">
-<h2>الإعدادات</h2>
-<div style="margin:8px 0">
-<label>اللغة</label>
-<select id="langSelect">
-<option value="ar">عربي</option>
-<option value="en">English</option>
-</select>
-</div>
-<div style="margin:8px 0">
-<label>الموسيقى</label>
-<input type="checkbox" id="musicToggle">
-</div>
-<div style="margin:8px 0">
-<label>المؤثرات</label>
-<input type="checkbox" id="fxToggle" checked>
-</div>
-<button onclick="closeSettings()">رجوع</button>
-</div>
-
-<div id="shopPanel" class="panel">
-<h2>المتجر</h2>
-<p id="coinUI"></p>
-<button onclick="buy('speed')">زيادة سرعة - 100</button>
-<button onclick="buy('damage')">زيادة ضرر - 150</button>
-<button onclick="buy('skin')">تغيير شكل - 200</button>
-<br>
-<button onclick="closeShop()">رجوع</button>
+<div id="menu" class="panel">
+<h2>Galaxy Dominion v3</h2>
+<button onclick="Game.start()">ابدأ</button>
+<button onclick="Game.pause()">إيقاف</button>
 </div>
 
 <div class="topUI">
-<div id="scoreUI"></div>
-<div>
-<button onclick="pauseGame()">إيقاف</button>
-</div>
+<div id="uiLeft"></div>
 </div>
 
 <script>
-const canvas=document.getElementById("c")
+
+/* ===============================
+   CORE ENGINE SYSTEM
+=============================== */
+
+const canvas=document.getElementById("game")
 const ctx=canvas.getContext("2d")
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
-resize()
-addEventListener("resize",resize)
 
-let game=false
-let paused=false
-let score=0
-let coins=0
-let round=1
-let lang="ar"
+const Game={
+running:false,
+width:0,
+height:0,
+score:0,
+coins:0,
+round:1,
+delta:0,
+lastTime:0,
 
-let player={
-x:canvas.width/2,y:canvas.height-120,
-r:22,speed:5,hp:100,
-color:"#00f2ff",damage:1
+entities:[],
+player:null,
+
+init(){
+this.resize()
+window.addEventListener("resize",()=>this.resize())
+this.loop(0)
+},
+
+resize(){
+canvas.width=window.innerWidth
+canvas.height=window.innerHeight
+this.width=canvas.width
+this.height=canvas.height
+},
+
+start(){
+this.running=true
+document.getElementById("menu").style.display="none"
+},
+
+pause(){
+this.running=false
+document.getElementById("menu").style.display="block"
+},
+
+add(entity){
+this.entities.push(entity)
+},
+
+update(dt){
+this.entities.forEach(e=>e.update(dt))
+this.entities=this.entities.filter(e=>!e.remove)
+},
+
+draw(){
+ctx.clearRect(0,0,this.width,this.height)
+this.entities.forEach(e=>e.draw())
+document.getElementById("uiLeft").innerText=
+"Score "+this.score+" | Coins "+this.coins+" | Round "+this.round
+},
+
+loop(timestamp){
+requestAnimationFrame((t)=>this.loop(t))
+this.delta=(timestamp-this.lastTime)/1000
+this.lastTime=timestamp
+if(!this.running)return
+this.update(this.delta)
+this.draw()
+}
 }
 
-let enemies=[]
-let bullets=[]
-let particles=[]
+/* ===============================
+   BASE ENTITY CLASS
+=============================== */
 
-function spawnEnemy(){
-enemies.push({
-x:Math.random()*canvas.width,
-y:-40,
-r:20,
-hp:3+round,
-maxHp:3+round,
-speed:1.2+round*0.1,
-color:"#ff3c3c"
-})
+class Entity{
+constructor(x,y){
+this.x=x
+this.y=y
+this.remove=false
+}
+update(){}
+draw(){}
 }
 
-function startGame(){
-document.getElementById("startPanel").style.display="none"
-game=true
-loop()
+/* ===============================
+   PLAYER BASE
+=============================== */
+
+class Player extends Entity{
+constructor(){
+super(canvas.width/2,canvas.height-120)
+this.radius=22
+this.targetX=this.x
+this.targetY=this.y
+this.speed=10
+}
+update(){
+this.x+=(this.targetX-this.x)*0.15
+this.y+=(this.targetY-this.y)*0.15
+this.x=Math.max(this.radius,Math.min(canvas.width-this.radius,this.x))
+this.y=Math.max(this.radius,Math.min(canvas.height-this.radius,this.y))
+}
+draw(){
+ctx.save()
+ctx.translate(this.x,this.y)
+ctx.fillStyle="#00f2ff"
+ctx.beginPath()
+ctx.moveTo(0,-24)
+ctx.lineTo(-20,22)
+ctx.lineTo(20,22)
+ctx.closePath()
+ctx.fill()
+ctx.restore()
+}
 }
 
-function pauseGame(){
-game=false
-document.getElementById("startPanel").style.display="block"
-}
-
-function openSettings(){document.getElementById("settingsPanel").style.display="block"}
-function closeSettings(){document.getElementById("settingsPanel").style.display="none"}
-function openShop(){document.getElementById("shopPanel").style.display="block"}
-function closeShop(){document.getElementById("shopPanel").style.display="none"}
-
-document.getElementById("langSelect").addEventListener("change",e=>{
-lang=e.target.value
-if(lang==="en"){
-document.documentElement.lang="en"
-document.documentElement.dir="ltr"
-}else{
-document.documentElement.lang="ar"
-document.documentElement.dir="rtl"
-}
-})
-
-document.getElementById("musicToggle").addEventListener("change",e=>{
-if(e.target.checked)window.open("https://youtu.be/Igp4tIOGGMM?si=1B1BothkcZcI9lWn")
-})
+/* ===============================
+   INPUT SYSTEM
+=============================== */
 
 canvas.addEventListener("touchmove",e=>{
 let rect=canvas.getBoundingClientRect()
 let t=e.touches[0]
-player.x=t.clientX-rect.left
-player.y=t.clientY-rect.top
+Game.player.targetX=t.clientX-rect.left
+Game.player.targetY=t.clientY-rect.top
 })
 
-canvas.addEventListener("click",shoot)
+/* ===============================
+   INITIALIZE CORE
+=============================== */
 
-function shoot(){
-bullets.push({x:player.x,y:player.y,spd:8,dmg:player.damage})
+Game.player=new Player()
+Game.add(Game.player)
+
+Game.init()
+
+/* ===============================
+   BULLET SYSTEM
+=============================== */
+
+class Bullet extends Entity{
+constructor(x,y,angle= -Math.PI/2,speed=500,damage=1){
+super(x,y)
+this.angle=angle
+this.speed=speed
+this.damage=damage
+this.radius=4
+}
+update(dt){
+this.x+=Math.cos(this.angle)*this.speed*dt
+this.y+=Math.sin(this.angle)*this.speed*dt
+
+if(this.y<-20 || this.y>canvas.height+20 ||
+   this.x<-20 || this.x>canvas.width+20){
+this.remove=true
+}
+}
+draw(){
+ctx.fillStyle="#ffffff"
+ctx.beginPath()
+ctx.arc(this.x,this.y,this.radius,0,Math.PI*2)
+ctx.fill()
+}
 }
 
-function buy(type){
-if(type==="speed"&&coins>=100){coins-=100;player.speed+=1}
-if(type==="damage"&&coins>=150){coins-=150;player.damage+=0.5}
-if(type==="skin"&&coins>=200){coins-=200;player.color="#"+Math.floor(Math.random()*16777215).toString(16)}
+
+/* ===============================
+   ENEMY SYSTEM
+=============================== */
+
+class Enemy extends Entity{
+constructor(type=0){
+super(Math.random()*canvas.width,-40)
+
+this.type=type
+this.flash=0
+
+if(type===0){ // عادي
+this.radius=16
+this.hp=3+Game.round
+this.speed=100+Game.round*10
+this.color="#ff4444"
+}
+else if(type===1){ // سريع
+this.radius=12
+this.hp=2+Game.round
+this.speed=180+Game.round*15
+this.color="#ffaa00"
+}
+else{ // تانك
+this.radius=28
+this.hp=10+Game.round*3
+this.speed=70+Game.round*8
+this.color="#aa00ff"
+}
 }
 
-function update(){
-if(Math.random()<0.02)spawnEnemy()
+update(dt){
+this.y+=this.speed*dt
 
-enemies.forEach(e=>e.y+=e.speed)
-
-bullets.forEach(b=>b.y-=b.spd)
-
-bullets.forEach(b=>{
-enemies.forEach(e=>{
-if(Math.hypot(b.x-e.x,b.y-e.y)<e.r){
-e.hp-=b.dmg
-spawnExplosion(e.x,e.y)
-}
-})
-})
-
-enemies=enemies.filter(e=>{
-if(e.hp<=0){score+=10;coins+=5;return false}
-if(e.y>canvas.height)return false
-return true
-})
-
-particles.forEach(p=>p.life--)
-particles=particles.filter(p=>p.life>0)
-
-if(score>round*200)round++
+if(this.type===1){
+this.x+=Math.sin(this.y*0.05)*100*dt
 }
 
-function spawnExplosion(x,y){
+if(this.y>canvas.height+50){
+this.remove=true
+}
+}
+
+draw(){
+ctx.fillStyle=this.flash>0?"#ffffff":this.color
+if(this.flash>0)this.flash--
+
+ctx.beginPath()
+ctx.arc(this.x,this.y,this.radius,0,Math.PI*2)
+ctx.fill()
+
+// health bar
+ctx.fillStyle="#00ff00"
+ctx.fillRect(
+this.x-20,
+this.y-this.radius-12,
+40*(this.hp/(10+Game.round*3)),
+4
+)
+}
+}
+
+
+/* ===============================
+   EXPLOSION SYSTEM
+=============================== */
+
+class Particle extends Entity{
+constructor(x,y){
+super(x,y)
+this.vx=(Math.random()-0.5)*300
+this.vy=(Math.random()-0.5)*300
+this.life=0.6
+}
+update(dt){
+this.x+=this.vx*dt
+this.y+=this.vy*dt
+this.life-=dt
+if(this.life<=0)this.remove=true
+}
+draw(){
+ctx.fillStyle="rgba(255,180,0,"+(this.life/0.6)+")"
+ctx.fillRect(this.x,this.y,3,3)
+}
+}
+
+
+/* ===============================
+   COMBAT SYSTEM
+=============================== */
+
+Game.fireRate=0.2
+Game.fireTimer=0
+
+Game.spawnEnemy=function(){
+let r=Math.random()
+let type=0
+if(r>0.7)type=1
+if(r>0.9)type=2
+this.add(new Enemy(type))
+}
+
+Game.shoot=function(){
+this.add(new Bullet(this.player.x,this.player.y))
+}
+
+Game.handleCollisions=function(){
+this.entities.forEach(a=>{
+if(a instanceof Bullet){
+this.entities.forEach(b=>{
+if(b instanceof Enemy){
+let dx=a.x-b.x
+let dy=a.y-b.y
+let dist=Math.sqrt(dx*dx+dy*dy)
+if(dist < a.radius + b.radius){
+b.hp-=a.damage
+b.flash=4
+a.remove=true
+if(b.hp<=0){
+b.remove=true
+Game.score+=10
+Game.coins+=5
 for(let i=0;i<20;i++){
-particles.push({
-x:x,y:y,
-vx:(Math.random()-0.5)*4,
-vy:(Math.random()-0.5)*4,
-life:40
+Game.add(new Particle(b.x,b.y))
+}
+}
+}
+}
 })
+}
+})
+}
+
+
+/* ===============================
+   WAVE + ROUND SYSTEM
+=============================== */
+
+Game.spawnTimer=0
+Game.enemiesPerRound=10
+Game.kills=0
+
+const originalUpdate_v3 = Game.update
+
+Game.update=function(dt){
+
+originalUpdate_v3.call(this,dt)
+
+this.fireTimer+=dt
+if(this.fireTimer>=this.fireRate){
+this.fireTimer=0
+this.shoot()
+}
+
+this.spawnTimer+=dt
+if(this.spawnTimer>=1){
+this.spawnTimer=0
+this.spawnEnemy()
+}
+
+this.handleCollisions()
+
+// حساب القتلى
+this.kills = this.entities.filter(e=>e instanceof Enemy && e.remove).length
+
+// انتقال راوند
+if(this.score >= this.round * 150){
+this.round++
+}
+
+}
+
+/* ===============================
+   BOSS SYSTEM
+=============================== */
+
+class Boss extends Entity{
+constructor(){
+super(canvas.width/2,120)
+
+this.radius=70
+this.maxHp=200 + Game.round*20
+this.hp=this.maxHp
+this.phase=1
+this.attackTimer=0
+this.moveTimer=0
+}
+
+update(dt){
+
+// حركة أفقية
+this.moveTimer+=dt
+this.x = canvas.width/2 + Math.sin(this.moveTimer*1.5)*200
+
+// تغيير مرحلة
+if(this.hp < this.maxHp*0.5){
+this.phase=2
+}
+
+this.attackTimer+=dt
+
+// هجوم حسب المرحلة
+if(this.phase===1){
+if(this.attackTimer>1.5){
+this.attackTimer=0
+this.radialAttack(6)
+}
+}
+else{
+if(this.attackTimer>1){
+this.attackTimer=0
+this.radialAttack(12)
+}
+}
+}
+
+radialAttack(count){
+for(let i=0;i<count;i++){
+let angle=(Math.PI*2/count)*i
+Game.add(new BossBullet(this.x,this.y,angle))
 }
 }
 
-function draw(){
-ctx.clearRect(0,0,canvas.width,canvas.height)
+draw(){
 
-particles.forEach(p=>{
-ctx.fillStyle="rgba(255,200,0,"+(p.life/40)+")"
-ctx.fillRect(p.x,p.y,4,4)
-p.x+=p.vx
-p.y+=p.vy
-})
-
-ctx.fillStyle=player.color
+ctx.fillStyle="#9900ff"
 ctx.beginPath()
-ctx.arc(player.x,player.y,player.r,0,Math.PI*2)
+ctx.arc(this.x,this.y,this.radius,0,Math.PI*2)
 ctx.fill()
 
-enemies.forEach(e=>{
-ctx.fillStyle=e.color
+// شريط صحة
+ctx.fillStyle="#ff0000"
+ctx.fillRect(
+canvas.width/2-150,
+40,
+300*(this.hp/this.maxHp),
+10
+)
+}
+}
+
+
+/* ===============================
+   BOSS BULLETS
+=============================== */
+
+class BossBullet extends Entity{
+constructor(x,y,angle){
+super(x,y)
+this.angle=angle
+this.speed=250
+this.radius=6
+}
+
+update(dt){
+this.x+=Math.cos(this.angle)*this.speed*dt
+this.y+=Math.sin(this.angle)*this.speed*dt
+
+if(this.x<-50 || this.x>canvas.width+50 ||
+   this.y<-50 || this.y>canvas.height+50){
+this.remove=true
+}
+}
+
+draw(){
+ctx.fillStyle="#ff00ff"
 ctx.beginPath()
-ctx.arc(e.x,e.y,e.r,0,Math.PI*2)
+ctx.arc(this.x,this.y,this.radius,0,Math.PI*2)
 ctx.fill()
-
-ctx.fillStyle="#0f0"
-ctx.fillRect(e.x-20,e.y-30,40*(e.hp/e.maxHp),4)
-})
-
-bullets.forEach(b=>{
-ctx.fillStyle="#fff"
-ctx.fillRect(b.x-2,b.y-10,4,10)
-})
-
-document.getElementById("scoreUI").innerText="Score "+score+" | Coins "+coins+" | Round "+round
-document.getElementById("coinUI").innerText="Coins "+coins
+}
 }
 
-function loop(){
-if(!game)return
-update()
-draw()
-requestAnimationFrame(loop)
+
+/* ===============================
+   BOSS SPAWN CONTROL
+=============================== */
+
+Game.boss=null
+
+Game.checkBossSpawn=function(){
+if(Game.round % 5 === 0 && !Game.boss){
+Game.boss = new Boss()
+Game.add(Game.boss)
 }
+}
+
+// نعدل update مرة ثانية لكن بدون كسر القديم
+const previousUpdate_v3_p2 = Game.update
+
+Game.update=function(dt){
+
+previousUpdate_v3_p2.call(this,dt)
+
+Game.checkBossSpawn()
+
+// اصطدام الطلقات مع البوس
+if(Game.boss){
+Game.entities.forEach(e=>{
+if(e instanceof Bullet){
+let dx=e.x-Game.boss.x
+let dy=e.y-Game.boss.y
+let dist=Math.sqrt(dx*dx+dy*dy)
+
+if(dist < e.radius + Game.boss.radius){
+Game.boss.hp-=e.damage
+e.remove=true
+
+for(let i=0;i<25;i++){
+Game.add(new Particle(Game.boss.x,Game.boss.y))
+}
+
+if(Game.boss.hp<=0){
+Game.score+=500
+Game.coins+=100
+Game.boss.remove=true
+Game.boss=null
+Game.round++
+}
+}
+}
+})
+}
+}
+
+/* ===============================
+   ADVANCED UPGRADE SYSTEM
+=============================== */
+
+Game.upgrades={
+damage:0,
+fireRate:0,
+multiShot:0,
+shield:0
+}
+
+Game.applyUpgrades=function(){
+this.fireRate = 0.2 - (this.upgrades.fireRate * 0.02)
+if(this.fireRate < 0.05) this.fireRate=0.05
+}
+
+Game.buyUpgrade=function(type){
+
+let cost = 100 + (this.upgrades[type] * 50)
+
+if(this.coins < cost) return
+
+this.coins -= cost
+this.upgrades[type]++
+this.applyUpgrades()
+}
+
+
+/* ===============================
+   MODIFY SHOOT FOR UPGRADES
+=============================== */
+
+const prevShoot_v3 = Game.shoot
+
+Game.shoot=function(){
+
+let damage = 1 + this.upgrades.damage
+let shots = 1 + this.upgrades.multiShot
+
+for(let i=0;i<shots;i++){
+let spread = (i - (shots-1)/2) * 0.15
+this.add(new Bullet(
+this.player.x,
+this.player.y,
+- Math.PI/2 + spread,
+500,
+damage
+))
+}
+}
+
+
+/* ===============================
+   COMBO MULTIPLIER SYSTEM
+=============================== */
+
+Game.combo=1
+Game.comboTimer=0
+
+Game.registerKill=function(){
+this.combo++
+this.comboTimer=2
+}
+
+const prevHandleCollisions_v3 = Game.handleCollisions
+
+Game.handleCollisions=function(){
+
+prevHandleCollisions_v3.call(this)
+
+this.entities.forEach(e=>{
+if(e instanceof Enemy && e.remove){
+this.registerKill()
+this.score += 10 * this.combo
+}
+})
+
+if(this.comboTimer>0){
+this.comboTimer -= this.delta
+}
+else{
+this.combo=1
+}
+}
+
+
+/* ===============================
+   SHIELD SYSTEM
+=============================== */
+
+Game.playerShield=0
+
+Game.activateShield=function(){
+if(this.upgrades.shield>0){
+this.playerShield = 3
+}
+}
+
+const prevUpdateShield = Game.update
+
+Game.update=function(dt){
+
+prevUpdateShield.call(this,dt)
+
+if(this.playerShield>0){
+this.playerShield -= dt
+}
+}
+
+
+/* ===============================
+   SAVE SYSTEM
+=============================== */
+
+Game.save=function(){
+localStorage.setItem("GD_v3_save",JSON.stringify({
+score:this.score,
+coins:this.coins,
+round:this.round,
+upgrades:this.upgrades
+}))
+}
+
+Game.load=function(){
+let data = localStorage.getItem("GD_v3_save")
+if(!data) return
+data = JSON.parse(data)
+this.score = data.score || 0
+this.coins = data.coins || 0
+this.round = data.round || 1
+this.upgrades = data.upgrades || this.upgrades
+this.applyUpgrades()
+}
+
+Game.load()
+
+setInterval(()=>{
+if(Game.running){
+Game.save()
+}
+},5000)
+
+/* ===============================
+   ADVANCED UI SYSTEM
+=============================== */
+
+Game.showUpgradeMenu=function(){
+
+if(document.getElementById("upgradeMenu")) return
+
+let menu=document.createElement("div")
+menu.id="upgradeMenu"
+menu.style.position="absolute"
+menu.style.top="50%"
+menu.style.left="50%"
+menu.style.transform="translate(-50%,-50%)"
+menu.style.background="#111"
+menu.style.border="2px solid #555"
+menu.style.padding="20px"
+menu.style.borderRadius="10px"
+menu.style.textAlign="center"
+menu.style.zIndex="999"
+
+menu.innerHTML=`
+<h3>التطويرات</h3>
+<button onclick="Game.buyUpgrade('damage')">ضرر</button>
+<button onclick="Game.buyUpgrade('fireRate')">سرعة إطلاق</button>
+<button onclick="Game.buyUpgrade('multiShot')">طلقات متعددة</button>
+<button onclick="Game.buyUpgrade('shield')">درع</button>
+<br><br>
+<button onclick="Game.closeUpgradeMenu()">إغلاق</button>
+`
+
+document.body.appendChild(menu)
+Game.pause()
+}
+
+Game.closeUpgradeMenu=function(){
+let menu=document.getElementById("upgradeMenu")
+if(menu) menu.remove()
+Game.start()
+}
+
+document.addEventListener("keydown",e=>{
+if(e.key==="u"){
+Game.showUpgradeMenu()
+}
+})
+
+/* ===============================
+   VISUAL FX ENHANCEMENT
+=============================== */
+
+const previousDrawFinal = Game.draw
+
+Game.draw=function(){
+previousDrawFinal.call(this)
+
+// تأثير نيون خفيف
+ctx.shadowBlur=15
+ctx.shadowColor="#00f2ff"
+
+// عرض الكومبو
+ctx.fillStyle="#ffffff"
+ctx.font="16px Arial"
+ctx.fillText("Combo x"+Game.combo,20,60)
+
+// عرض الدرع
+if(Game.playerShield>0){
+ctx.strokeStyle="#00ffff"
+ctx.beginPath()
+ctx.arc(Game.player.x,Game.player.y,Game.player.radius+10,0,Math.PI*2)
+ctx.stroke()
+}
+}
+
+/* ===============================
+   GAME OVER SYSTEM
+=============================== */
+
+Game.playerHp=3
+
+Game.damagePlayer=function(){
+if(Game.playerShield>0) return
+this.playerHp--
+if(this.playerHp<=0){
+this.gameOver()
+}
+}
+
+Game.gameOver=function(){
+this.running=false
+alert("انتهت اللعبة - Score: "+this.score)
+location.reload()
+}
+
+/* ===============================
+   PLAYER DAMAGE COLLISION
+=============================== */
+
+const previousCollisionFinal = Game.handleCollisions
+
+Game.handleCollisions=function(){
+
+previousCollisionFinal.call(this)
+
+this.entities.forEach(e=>{
+if(e instanceof Enemy){
+let dx=e.x-this.player.x
+let dy=e.y-this.player.y
+let dist=Math.sqrt(dx*dx+dy*dy)
+if(dist < e.radius + this.player.radius){
+e.remove=true
+this.damagePlayer()
+}
+}
+})
+}
+
+/* ===============================
+   FINAL FILE CLOSING
+=============================== */
+
 </script>
 </body>
 </html>
