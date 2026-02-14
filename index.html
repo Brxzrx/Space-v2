@@ -796,6 +796,131 @@ this.damagePlayer()
    FINAL FILE CLOSING
 =============================== */
 
+/* ===============================
+   REMOVE TOP LEFT TEXT BUG
+=============================== */
+
+Game.draw=function(){
+
+ctx.clearRect(0,0,Game.width,Game.height)
+
+Game.entities.forEach(e=>e.draw())
+
+// شريط صحة مرئي بدل النص القديم
+ctx.fillStyle="#444"
+ctx.fillRect(20,20,200,12)
+
+ctx.fillStyle="#00ff00"
+ctx.fillRect(20,20,200*(Game.playerHp/Game.playerMaxHp),12)
+
+ctx.strokeStyle="#fff"
+ctx.strokeRect(20,20,200,12)
+
+ctx.fillStyle="#fff"
+ctx.font="14px Arial"
+ctx.fillText("Lives: "+Game.lives,20,50)
+ctx.fillText("Round: "+Game.round,20,70)
+ctx.fillText("Coins: "+Game.coins,20,90)
+
+}
+
+
+/* ===============================
+   FORCE PLAYER START POSITION
+=============================== */
+
+Game.resetPlayerState=function(){
+this.playerHp=this.playerMaxHp
+this.playerShield=0
+this.player.x = canvas.width/2
+this.player.y = canvas.height-80
+}
+
+
+/* ===============================
+   BETTER ENEMY VISUAL DESIGN
+=============================== */
+
+Enemy.prototype.draw=function(){
+
+ctx.save()
+ctx.translate(this.x,this.y)
+
+ctx.fillStyle=this.flash>0?"#ffffff":this.color
+
+// جسم سفينة بدل دائرة
+ctx.beginPath()
+ctx.moveTo(0,-this.radius)
+ctx.lineTo(-this.radius, this.radius)
+ctx.lineTo(this.radius, this.radius)
+ctx.closePath()
+ctx.fill()
+
+// محرك خلفي
+ctx.fillStyle="#ffcc00"
+ctx.fillRect(-6,this.radius,12,10)
+
+ctx.restore()
+
+}
+
+/* ===============================
+   PAUSE + SAVE + RETURN MENU
+=============================== */
+
+Game.pauseAndSave=function(){
+this.save()
+this.pause()
+this.showMainMenu()
+}
+
+// زر إيقاف دائم أعلى الشاشة
+let pauseBtn=document.createElement("button")
+pauseBtn.innerText="إيقاف"
+pauseBtn.style.position="absolute"
+pauseBtn.style.top="20px"
+pauseBtn.style.right="20px"
+pauseBtn.style.zIndex="2000"
+pauseBtn.onclick=()=>Game.pauseAndSave()
+document.body.appendChild(pauseBtn)
+
+/* ===============================
+   CONTINUE BUTTON LOGIC
+=============================== */
+
+Game.showMainMenu=function(){
+
+if(document.getElementById("mainMenuV3")) return
+
+let menu=document.createElement("div")
+menu.id="mainMenuV3"
+menu.style.position="absolute"
+menu.style.top="50%"
+menu.style.left="50%"
+menu.style.transform="translate(-50%,-50%)"
+menu.style.background="#111"
+menu.style.border="2px solid #555"
+menu.style.padding="25px"
+menu.style.borderRadius="12px"
+menu.style.textAlign="center"
+menu.style.zIndex="1000"
+
+let hasSave = localStorage.getItem("GD_v3_save")
+
+menu.innerHTML=`
+<h2>Galaxy Dominion</h2>
+<button onclick="Game.start(); Game.closeMainMenu()">
+${hasSave ? "يكمل" : "ابدأ"}
+</button>
+<button onclick="Game.showUpgradeMenu()">المتجر</button>
+<button onclick="window.open('https://wa.me/966537219007')">تواصل مع المطور</button>
+<button onclick="Game.toggleSettings()">الإعدادات</button>
+`
+
+document.body.appendChild(menu)
+Game.pause()
+}
+
 </script>
 </body>
 </html>
