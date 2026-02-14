@@ -6,58 +6,32 @@
 <title>Galaxy Overdrive</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui}
-body{background:#000;overflow:hidden;color:#fff}
+body{background:radial-gradient(circle at 50% 20%,#111 0%,#000 60%);overflow:hidden;color:#fff}
 canvas{display:block}
 .panel{
-position:absolute;
-top:50%;left:50%;
+position:absolute;top:50%;left:50%;
 transform:translate(-50%,-50%);
-background:#111;
-border:2px solid #444;
-padding:25px;
-border-radius:12px;
-display:none;
-min-width:280px;
-text-align:center;
+background:linear-gradient(180deg,#151515,#0b0b0b);
+border:2px solid #333;padding:25px;border-radius:14px;
+display:none;min-width:300px;text-align:center;
+box-shadow:0 0 40px #000;
 }
+.panel h2{margin-bottom:10px}
 button{
-background:#1f1f1f;
-border:2px solid #555;
-color:#fff;
-padding:10px 20px;
-margin:6px;
-border-radius:8px;
-cursor:pointer;
+background:#1a1a1a;border:2px solid #444;color:#fff;
+padding:10px 18px;margin:6px;border-radius:10px;cursor:pointer;
 }
-button:hover{background:#333}
-.grid{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:10px;
-margin-top:10px;
-}
-.settingRow{
-display:flex;
-justify-content:space-between;
-margin:8px 0;
-}
+button:hover{background:#2a2a2a}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .topUI{
-position:absolute;
-top:10px;
-left:0;right:0;
-display:flex;
-justify-content:space-between;
-padding:0 15px;
-font-size:14px;
+position:absolute;top:10px;left:0;right:0;
+display:flex;justify-content:space-between;padding:0 15px;font-size:14px
 }
 .shop{
-position:absolute;
-bottom:10px;
-left:50%;
-transform:translateX(-50%);
-display:flex;
-gap:10px;
+position:absolute;bottom:15px;left:50%;
+transform:translateX(-50%);display:flex;gap:10px
 }
+select,input{background:#111;color:#fff;border:1px solid #444;padding:4px}
 </style>
 </head>
 <body>
@@ -66,40 +40,51 @@ gap:10px;
 
 <div id="startPanel" class="panel" style="display:block">
 <h2>Galaxy Overdrive</h2>
-<p id="introText">الأعداء يحاولون يمسكونك 😂</p>
+<p id="introText">استعد للانطلاق</p>
 <div class="grid">
 <button onclick="startGame()">ابدأ</button>
 <button onclick="openSettings()">الإعدادات</button>
 <button onclick="window.open('https://wa.me/966537219007')">تواصل مع المطور</button>
-<button onclick="toggleLang()">تغيير اللغة</button>
+<button onclick="openShop()">المتجر</button>
 </div>
 </div>
 
 <div id="settingsPanel" class="panel">
-<h3>الإعدادات</h3>
-<div class="settingRow">
-<span>الموسيقى</span>
+<h2>الإعدادات</h2>
+<div style="margin:8px 0">
+<label>اللغة</label>
+<select id="langSelect">
+<option value="ar">عربي</option>
+<option value="en">English</option>
+</select>
+</div>
+<div style="margin:8px 0">
+<label>الموسيقى</label>
 <input type="checkbox" id="musicToggle">
 </div>
-<div class="settingRow">
-<span>تفعيل الاهتزاز</span>
-<input type="checkbox" id="vibrateToggle">
-</div>
-<div class="settingRow">
-<span>تفعيل المؤثرات</span>
+<div style="margin:8px 0">
+<label>المؤثرات</label>
 <input type="checkbox" id="fxToggle" checked>
 </div>
 <button onclick="closeSettings()">رجوع</button>
 </div>
 
-<div id="upgradePanel" class="panel"></div>
+<div id="shopPanel" class="panel">
+<h2>المتجر</h2>
+<p id="coinUI"></p>
+<button onclick="buy('speed')">زيادة سرعة - 100</button>
+<button onclick="buy('damage')">زيادة ضرر - 150</button>
+<button onclick="buy('skin')">تغيير شكل - 200</button>
+<br>
+<button onclick="closeShop()">رجوع</button>
+</div>
 
 <div class="topUI">
 <div id="scoreUI"></div>
-<div id="comboUI"></div>
+<div>
+<button onclick="pauseGame()">إيقاف</button>
 </div>
-
-<div class="shop" id="shop"></div>
+</div>
 
 <script>
 const canvas=document.getElementById("c")
@@ -108,59 +93,33 @@ function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
 resize()
 addEventListener("resize",resize)
 
-let lang="ar"
-function toggleLang(){lang=lang==="ar"?"en":"ar"}
-
 let game=false
+let paused=false
 let score=0
-let combo=1
-let comboTimer=0
+let coins=0
 let round=1
-let gravityMode=false
-let lowVision=false
-let bossActive=false
+let lang="ar"
 
 let player={
-x:canvas.width/2,
-y:canvas.height-100,
-w:40,h:40,
-speed:6,
-dashCD:0,
-dashTime:0,
-color:"#00f2ff",
-hp:100,
-flash:0
+x:canvas.width/2,y:canvas.height-120,
+r:22,speed:5,hp:100,
+color:"#00f2ff",damage:1
 }
 
 let enemies=[]
 let bullets=[]
-let boss=null
+let particles=[]
 
 function spawnEnemy(){
-let type=Math.random()
-let speed=round===1?2.5:1.5+round*0.2
-let e={
+enemies.push({
 x:Math.random()*canvas.width,
 y:-40,
-hp:2+round,
-maxHp:2+round,
-speed:speed,
-zigzag:type>0.5,
-hitFlash:0
-}
-enemies.push(e)
-}
-
-function spawnBoss(){
-bossActive=true
-boss={
-x:canvas.width/2,
-y:120,
-hp:40,
-maxHp:40,
-phase:1,
-patternTimer:0
-}
+r:20,
+hp:3+round,
+maxHp:3+round,
+speed:1.2+round*0.1,
+color:"#ff3c3c"
+})
 }
 
 function startGame(){
@@ -169,155 +128,129 @@ game=true
 loop()
 }
 
+function pauseGame(){
+game=false
+document.getElementById("startPanel").style.display="block"
+}
+
 function openSettings(){document.getElementById("settingsPanel").style.display="block"}
 function closeSettings(){document.getElementById("settingsPanel").style.display="none"}
+function openShop(){document.getElementById("shopPanel").style.display="block"}
+function closeShop(){document.getElementById("shopPanel").style.display="none"}
+
+document.getElementById("langSelect").addEventListener("change",e=>{
+lang=e.target.value
+if(lang==="en"){
+document.documentElement.lang="en"
+document.documentElement.dir="ltr"
+}else{
+document.documentElement.lang="ar"
+document.documentElement.dir="rtl"
+}
+})
 
 document.getElementById("musicToggle").addEventListener("change",e=>{
 if(e.target.checked)window.open("https://youtu.be/Igp4tIOGGMM?si=1B1BothkcZcI9lWn")
 })
 
-addEventListener("keydown",e=>{
-if(e.key==="ArrowLeft")player.x-=player.speed
-if(e.key==="ArrowRight")player.x+=player.speed
-if(e.key==="Shift"&&player.dashCD<=0){
-player.dashTime=10
-player.dashCD=60
-}
+canvas.addEventListener("touchmove",e=>{
+let rect=canvas.getBoundingClientRect()
+let t=e.touches[0]
+player.x=t.clientX-rect.left
+player.y=t.clientY-rect.top
 })
 
-addEventListener("click",()=>{
-if(game)shoot()
-})
+canvas.addEventListener("click",shoot)
 
 function shoot(){
-bullets.push({x:player.x,y:player.y,spd:8,dmg:1+round*0.2})
+bullets.push({x:player.x,y:player.y,spd:8,dmg:player.damage})
+}
+
+function buy(type){
+if(type==="speed"&&coins>=100){coins-=100;player.speed+=1}
+if(type==="damage"&&coins>=150){coins-=150;player.damage+=0.5}
+if(type==="skin"&&coins>=200){coins-=200;player.color="#"+Math.floor(Math.random()*16777215).toString(16)}
 }
 
 function update(){
 if(Math.random()<0.02)spawnEnemy()
 
-if(round%4===0){
-enemies.forEach(e=>e.hp+=3)
-}
-
-if(round%3===0&&!bossActive)spawnBoss()
-
-if(player.dashCD>0)player.dashCD--
-if(player.dashTime>0){
-player.x+=15*(Math.random()>0.5?1:-1)
-player.dashTime--
-}
-
-enemies.forEach(e=>{
-e.y+=e.speed
-if(e.zigzag)e.x+=Math.sin(e.y*0.05)*2
-})
+enemies.forEach(e=>e.y+=e.speed)
 
 bullets.forEach(b=>b.y-=b.spd)
 
 bullets.forEach(b=>{
 enemies.forEach(e=>{
-if(Math.abs(b.x-e.x)<20&&Math.abs(b.y-e.y)<20){
+if(Math.hypot(b.x-e.x,b.y-e.y)<e.r){
 e.hp-=b.dmg
-e.hitFlash=5
-comboTimer=120
-combo+=0.2
-score+=10*combo
+spawnExplosion(e.x,e.y)
 }
 })
 })
 
 enemies=enemies.filter(e=>{
-if(e.hp<=0)return false
+if(e.hp<=0){score+=10;coins+=5;return false}
 if(e.y>canvas.height)return false
 return true
 })
 
-if(comboTimer>0)comboTimer--
-else combo=1
+particles.forEach(p=>p.life--)
+particles=particles.filter(p=>p.life>0)
 
-if(score>round*200){
-round++
-gravityMode=round%5===0
-lowVision=round%6===0
-showUpgrade()
-}
+if(score>round*200)round++
 }
 
-function showUpgrade(){
-game=false
-let panel=document.getElementById("upgradePanel")
-panel.innerHTML="<h3>اختر تطوير</h3>"
-let opts=[
-{t:"زيادة سرعة",f:()=>player.speed+=1},
-{t:"زيادة ضرر",f:()=>{}},
-{t:"استعادة صحة",f:()=>player.hp=100}
-]
-opts.forEach(o=>{
-let b=document.createElement("button")
-b.innerText=o.t
-b.onclick=()=>{o.f();panel.style.display="none";game=true}
-panel.appendChild(b)
+function spawnExplosion(x,y){
+for(let i=0;i<20;i++){
+particles.push({
+x:x,y:y,
+vx:(Math.random()-0.5)*4,
+vy:(Math.random()-0.5)*4,
+life:40
 })
-panel.style.display="block"
+}
 }
 
 function draw(){
-ctx.fillStyle="#000"
-ctx.fillRect(0,0,canvas.width,canvas.height)
+ctx.clearRect(0,0,canvas.width,canvas.height)
 
-if(lowVision){
-ctx.fillStyle="rgba(0,0,0,0.8)"
-ctx.fillRect(0,0,canvas.width,canvas.height)
-ctx.clearRect(player.x-100,player.y-100,200,200)
-}
+particles.forEach(p=>{
+ctx.fillStyle="rgba(255,200,0,"+(p.life/40)+")"
+ctx.fillRect(p.x,p.y,4,4)
+p.x+=p.vx
+p.y+=p.vy
+})
 
-ctx.fillStyle=player.flash>0?"#fff":player.color
-ctx.fillRect(player.x-20,player.y-20,40,40)
-if(player.flash>0)player.flash--
+ctx.fillStyle=player.color
+ctx.beginPath()
+ctx.arc(player.x,player.y,player.r,0,Math.PI*2)
+ctx.fill()
 
 enemies.forEach(e=>{
-ctx.fillStyle=e.hitFlash>0?"#fff":"#ff4444"
-ctx.fillRect(e.x-20,e.y-20,40,40)
-if(e.hitFlash>0)e.hitFlash--
+ctx.fillStyle=e.color
+ctx.beginPath()
+ctx.arc(e.x,e.y,e.r,0,Math.PI*2)
+ctx.fill()
+
 ctx.fillStyle="#0f0"
 ctx.fillRect(e.x-20,e.y-30,40*(e.hp/e.maxHp),4)
 })
 
 bullets.forEach(b=>{
-ctx.fillStyle="#ffff00"
-ctx.fillRect(b.x-3,b.y-10,6,10)
+ctx.fillStyle="#fff"
+ctx.fillRect(b.x-2,b.y-10,4,10)
 })
 
-if(bossActive){
-ctx.fillStyle="#9900ff"
-ctx.fillRect(boss.x-60,boss.y-60,120,120)
-ctx.fillStyle="#0f0"
-ctx.fillRect(boss.x-60,boss.y-80,120*(boss.hp/boss.maxHp),6)
-}
-
-document.getElementById("scoreUI").innerText="Score "+Math.floor(score)+" | Round "+round
-document.getElementById("comboUI").innerText="Combo x"+combo.toFixed(1)
+document.getElementById("scoreUI").innerText="Score "+score+" | Coins "+coins+" | Round "+round
+document.getElementById("coinUI").innerText="Coins "+coins
 }
 
 function loop(){
-if(!game){draw();requestAnimationFrame(loop);return}
+if(!game)return
 update()
 draw()
 requestAnimationFrame(loop)
 }
-
-setInterval(()=>{
-if(!game){
-let txts=[
-"الأعداء يتزحلقون 😂",
-"واحد طاح من السرعة 😆",
-"قائدهم ضايع 👀"
-]
-document.getElementById("introText").innerText=txts[Math.floor(Math.random()*txts.length)]
-}
-},2000)
 </script>
-
 </body>
 </html>
